@@ -1,0 +1,313 @@
+# X Daily Pulse
+#
+# Wake up to a curated summary of what happened on X overnight.
+# Pulls REAL tweet data via Registry's Twitter API (paid with x402 micropayments
+# through AgentWallet), then AI agents analyze, curate, and produce an
+# engagement-ready briefing with draft replies.
+#
+# Usage:
+#   prose run workflows/x-daily-pulse.prose
+#
+# Prerequisites:
+#   - AgentWallet configured (~/.agentwallet/config.json)
+#   - Wallet funded with USDC (even $1 covers hundreds of calls)
+#
+# Cost estimate: ~$0.10-0.20 per run (depends on accounts/topics count)
+#
+# Twitter API endpoints used (via registry.mcpay.tech):
+#   /api/user-tweets    $0.01  — recent tweets from watched accounts
+#   /api/search-tweets  $0.01  — topic search across all of X
+#   /api/trends         $0.01  — global/local trending topics
+#   /api/user-info      $0.005 — account metadata and follower counts
+
+input accounts: "Comma-separated X handles to monitor (e.g., 'elonmusk, openai, ycombinator')"
+input topics: "Topics or keywords to track (e.g., 'AI agents, LLM tooling, crypto')"
+input timeframe: "How far back to look (default: '24h')"
+input goal: "Your engagement goal (e.g., 'grow my AI agents audience', 'stay informed on web3')"
+
+# ============================================================
+# Constants
+# ============================================================
+
+const TWITTER_API = "https://registry.mcpay.tech/api/service/twitter"
+const TRENDS_WOEID = 1  # 1 = Worldwide. 23424977 = US. 44418 = London.
+
+# ============================================================
+# Agents
+# ============================================================
+
+agent data-fetcher:
+  model: sonnet
+  prompt: """
+    You fetch live Twitter data using the Registry API via AgentWallet's x402/fetch proxy.
+
+    IMPORTANT — How to call the API:
+    1. Read ~/.agentwallet/config.json to get username and apiToken
+    2. For every Twitter API call, use this pattern:
+
+    curl -s -X POST "https://frames.ag/api/wallets/USERNAME/actions/x402/fetch" \
+      -H "Authorization: Bearer API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"url":"TARGET_URL","method":"POST","body":{...}}'
+
+    The x402/fetch proxy handles payment automatically — you just send the request.
+
+    Available Twitter endpoints (all POST to registry.mcpay.tech/api/service/twitter):
+    - /api/user-tweets   — body: {"userName":"handle"}
+    - /api/search-tweets  — body: {"query":"search terms","queryType":"Latest"}
+    - /api/trends         — body: {"woeid":1}
+    - /api/user-info      — body: {"userName":"handle"}
+    - /api/tweet-replies   — body: {"tweetId":"ID"}
+
+    Return ALL raw JSON data. Do not summarize or filter — downstream agents handle analysis.
+    If an API call fails, log the error and continue with remaining calls.
+  """
+  permissions:
+    bash: allow
+    read: ["~/.agentwallet/config.json"]
+
+agent analyst:
+  model: opus
+  prompt: """
+    You analyze raw Twitter API data and surface what matters.
+
+    You receive structured JSON from real Twitter endpoints containing:
+    - User tweets with full engagement metrics (likes, retweets, replies, views, bookmarks)
+    - Search results with matching tweets across all of X
+    - Trending topics with tweet volumes
+
+    Your job:
+    - Calculate engagement velocity (metrics relative to account size and post age)
+    - Separate signal from noise — most tweets are irrelevant
+    - Identify the 3-5 most important developments
+    - Spot emerging narratives before they peak
+    - Rank opportunities by relevance to the user's stated goal
+    - Flag time-sensitive conversations still active
+
+    Be opinionated. If nothing interesting happened, say so.
+    Don't manufacture importance. Curate ruthlessly.
+  """
+
+agent engagement-coach:
+  model: opus
+  prompt: """
+    You craft engagement strategies for X/Twitter based on real data.
+
+    You receive analyzed tweet data with actual engagement metrics.
+    Use the metrics to assess conversation stage:
+    - High views + low replies = early opportunity (jump in)
+    - High replies + growing = peak (add unique angle or skip)
+    - Engagement plateaued = declining (skip unless very relevant)
+
+    For each engagement opportunity:
+    1. Link to the original post (https://x.com/{author}/status/{tweetId})
+    2. Why engage (relationship building, visibility, genuine interest)
+    3. Best reply angle that adds genuine value
+    4. 2-3 draft replies (different tones: insightful, contrarian, supportive)
+    5. Timing recommendation (reply now vs wait)
+    6. Expected impact based on the author's reach and engagement rate
+
+    Rules:
+    - Never suggest generic replies ("Great post!", "This is so true")
+    - Every reply must add information, perspective, or a smart question
+    - Match the tone of the original conversation
+    - Prioritize replies that could start a dialogue, not just get likes
+  """
+
+agent briefing-writer:
+  model: sonnet
+  prompt: """
+    You compile Twitter intelligence into a clean daily briefing.
+
+    Format the briefing as markdown:
+
+    ## Daily X Pulse — {date}
+
+    ### Executive Summary
+    (3 sentences max — what happened, what matters, what to do)
+
+    ### Top Stories
+    (2-3 biggest developments with direct tweet links)
+
+    ### From Your Watchlist
+    (Notable posts from tracked accounts, grouped by account)
+    (Include: tweet text, engagement metrics, link)
+
+    ### Hot Topics
+    (Trending discussions matching tracked topics)
+    (Include trending rank and tweet volume where available)
+
+    ### Engagement Opportunities
+    (Ranked list with draft replies ready to copy-paste)
+
+    ### Quick Stats
+    (Accounts most active, topics heating up/cooling down, total engagement)
+
+    Be concise. Use bullet points. Include tweet URLs as https://x.com/{user}/status/{id}.
+    The reader should be able to scan this in 3 minutes.
+  """
+  permissions:
+    write: ["./output/**"]
+
+# ============================================================
+# Phase 0: Validate wallet connection
+# ============================================================
+
+let wallet_check = session: data-fetcher
+  prompt: """
+    Read ~/.agentwallet/config.json and verify the wallet is configured.
+    Check that username and apiToken fields exist and are non-empty.
+
+    Then check the wallet balance:
+    curl -s "https://frames.ag/api/wallets/USERNAME/balances" \
+      -H "Authorization: Bearer API_TOKEN"
+
+    Report: username, whether connected, and USDC balance.
+    If not configured, stop and explain how to set up AgentWallet.
+  """
+
+if **wallet is not configured or has zero balance**:
+  throw "AgentWallet not configured or unfunded. Run the agentwallet connect flow first, then fund at https://frames.ag/u/YOUR_USERNAME"
+
+# ============================================================
+# Phase 1: Parallel data collection (real Twitter API)
+# ============================================================
+
+parallel (on-fail: "continue"):
+  # Fetch recent tweets from each watched account
+  account_data = session: data-fetcher
+    prompt: """
+      Fetch tweets from each of these accounts: {accounts}
+
+      For EACH account, make two API calls:
+      1. User info:  POST {TWITTER_API}/api/user-info  body: {{"userName":"HANDLE"}}
+      2. User tweets: POST {TWITTER_API}/api/user-tweets body: {{"userName":"HANDLE"}}
+
+      Use the x402/fetch proxy for each call.
+
+      Collect all raw JSON responses. Group results by account.
+      If pagination is available (has_next_page), fetch up to 2 pages per account.
+    """
+    context: wallet_check
+
+  # Search tweets by topic keywords
+  topic_data = session: data-fetcher
+    prompt: """
+      Search X for tweets matching these topics: {topics}
+
+      For EACH topic, call:
+      POST {TWITTER_API}/api/search-tweets
+      body: {{"query":"TOPIC","queryType":"Latest"}}
+
+      Use the x402/fetch proxy for each call.
+
+      Collect all raw JSON responses. Group results by topic.
+    """
+    context: wallet_check
+
+  # Get current trending topics
+  trends_data = session: data-fetcher
+    prompt: """
+      Fetch current trending topics on X.
+
+      Call: POST {TWITTER_API}/api/trends
+      body: {{"woeid":{TRENDS_WOEID}}}
+
+      Use the x402/fetch proxy.
+
+      Return the full raw JSON response with all trending topics.
+    """
+    context: wallet_check
+
+# ============================================================
+# Phase 2: Analysis — separate signal from noise
+# ============================================================
+
+let analysis = session: analyst
+  prompt: """
+    Analyze the collected Twitter data and surface what matters.
+
+    User's goal: {goal}
+    Timeframe: {timeframe}
+    Tracked accounts: {accounts}
+    Tracked topics: {topics}
+
+    You have three data sources:
+    1. account_data — tweets from watched accounts with full metrics
+    2. topic_data — search results for tracked topics
+    3. trends_data — current trending topics on X
+
+    Tasks:
+    1. Cross-reference trends with tracked topics (are any trending?)
+    2. Rank posts by engagement velocity (metrics / account size / post age)
+    3. Identify the top 3-5 most interesting developments
+    4. Flag time-sensitive conversations still worth joining
+    5. Note patterns: what topics are heating up vs cooling down
+    6. Identify posts from tracked accounts that deserve a response
+
+    Be ruthless in filtering. Only surface things worth the user's attention.
+  """
+  context: { account_data, topic_data, trends_data }
+
+# ============================================================
+# Phase 3: Engagement strategy
+# ============================================================
+
+let engagement = session: engagement-coach
+  prompt: """
+    Based on the analysis, create an engagement plan for today.
+
+    User's goal: {goal}
+
+    For each recommended engagement:
+    1. Direct link to the tweet
+    2. Why engage (relationship building, visibility, genuine interest)
+    3. Conversation stage assessment based on actual metrics
+    4. Best reply angle
+    5. 2-3 draft replies (different tones)
+    6. Timing recommendation
+    7. Expected impact (based on author's follower count and engagement rate)
+
+    Limit to 5-7 engagement opportunities max.
+    Rank by impact and time-sensitivity.
+  """
+  context: { analysis, account_data, topic_data }
+
+# ============================================================
+# Phase 4: Compile the briefing
+# ============================================================
+
+let briefing = session: briefing-writer
+  prompt: """
+    Compile everything into a daily briefing.
+
+    Include:
+    - Executive summary (3 sentences max)
+    - Top stories with direct tweet links
+    - Watchlist highlights grouped by account (with real metrics)
+    - Topic trends cross-referenced with global trending data
+    - Engagement opportunities with draft replies
+    - Quick stats (total posts scanned, top engagement rates, trending overlap)
+
+    Save the briefing to: ./output/x-pulse-{date}.md
+
+    The reader should be able to:
+    1. Scan the summary in 30 seconds
+    2. Read the full briefing in 3 minutes
+    3. Start engaging immediately using the draft replies
+  """
+  context: { analysis, engagement, account_data, topic_data, trends_data }
+
+# ============================================================
+# Output
+# ============================================================
+
+output result = {
+  briefing: briefing,
+  engagement_plan: engagement,
+  raw_analysis: analysis,
+  accounts_monitored: accounts,
+  topics_tracked: topics,
+  trends: trends_data,
+  timeframe: timeframe
+}
