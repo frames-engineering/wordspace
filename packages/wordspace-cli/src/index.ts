@@ -3,9 +3,10 @@
 import { init } from "./commands/init.js";
 import { search } from "./commands/search.js";
 import { add } from "./commands/add.js";
+import { run } from "./commands/run.js";
 import * as log from "./lib/log.js";
 
-const VERSION = "0.0.6";
+const VERSION = "0.0.9";
 
 const HELP = `
 Usage: wordspace <command> [options]
@@ -14,6 +15,7 @@ Commands:
   init          Bootstrap a new wordspace project
   search [q]    List available workflows (optionally filter by query)
   add <name>    Download specific workflow(s) by name
+  run <target>  Run a .prose workflow via Claude Code
 
 Options:
   --force       Re-run all steps / overwrite existing files
@@ -44,6 +46,8 @@ async function main() {
     await search(positional[1]);
   } else if (command === "add") {
     await add(positional.slice(1), force);
+  } else if (command === "run") {
+    await run(positional[1], force);
   } else if (!command) {
     console.log(HELP);
     process.exit(0);
