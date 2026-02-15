@@ -1,0 +1,132 @@
+# Research Agent — Web vs. Twitter
+#
+# Takes a topic, searches the deep web via Exa and real-time Twitter discourse
+# in parallel, then synthesizes a research brief showing what authoritative
+# sources say vs. what the live conversation looks like.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Exa API, Twitter API (via Frames Registry)
+
+input topic: "Research topic (be specific for best results)"
+input depth: "Research depth: 'quick' (3 min), 'standard' (5 min), or 'deep' (10+ min)"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent exa-researcher:
+  model: opus
+  prompt: """
+You are a deep web researcher using Exa semantic search.
+
+Exa endpoints at {REGISTRY_BASE}/exa (via AgentWallet at {WALLET}):
+- POST /api/search    body: {"query": "...", "numResults": 10, "type": "auto"}
+- POST /api/answer    body: {"query": "..."}
+- POST /api/contents  body: {"urls": ["..."]}
+
+Your method:
+1. Start with a broad semantic search on the topic
+2. Use /api/answer for a synthesized overview
+3. Extract full contents from the most promising URLs
+4. Identify conflicting viewpoints and consensus positions
+5. Note the authority/credibility of each source
+
+Always cite sources with URLs.
+"""
+
+agent twitter-researcher:
+  model: sonnet
+  prompt: """
+You capture real-time discourse from Twitter/X on a topic.
+
+Twitter endpoints at {REGISTRY_BASE}/twitter (via AgentWallet at {WALLET}):
+- POST /api/search-tweets  body: {"query": "...", "count": 50}
+- POST /api/trends         body: {"location": "Worldwide"}
+- POST /api/tweet-replies  body: {"tweetId": "..."}
+- POST /api/tweet-thread   body: {"tweetId": "..."}
+
+Your method:
+1. Search for tweets about the topic (recent, high engagement)
+2. Identify the most influential voices in the conversation
+3. Find threads that go deep on the topic
+4. Capture the range of opinions: consensus, contrarian, emerging
+5. Note sentiment: is the conversation positive, skeptical, heated?
+
+Return structured findings with tweet references.
+"""
+
+agent comparator:
+  model: opus
+  prompt: """
+You are a research synthesis expert. You compare findings from
+authoritative web sources against real-time social discourse to produce
+a nuanced research brief. You identify:
+- Where web sources and Twitter agree
+- Where they diverge and why
+- What Twitter knows that articles haven't caught up to
+- What articles cover that Twitter oversimplifies
+- The overall information landscape for decision-making
+"""
+
+# Phase 1: Parallel research across both channels
+parallel:
+  web_research = session: exa-researcher
+    prompt: """
+Deep research on: {topic}
+
+Depth level: {depth}
+
+If quick: 1 search + 1 answer call, top 5 results
+If standard: 2-3 searches from different angles + content extraction from top 3
+If deep: 3-5 searches, extract 5+ full articles, cross-reference claims
+
+Return structured findings with source URLs and confidence levels.
+"""
+
+  twitter_research = session: twitter-researcher
+    prompt: """
+Capture Twitter discourse on: {topic}
+
+Depth level: {depth}
+
+If quick: 1 search, top 20 tweets, sentiment summary
+If standard: 2 searches (broad + specific), top threads, key voices
+If deep: 3+ searches, thread deep-dives, reply analysis, influencer mapping
+
+Return: key voices, consensus view, contrarian takes, overall sentiment.
+"""
+
+# Phase 2: Synthesis — the "Web vs. Twitter" brief
+let brief = session: comparator
+  prompt: """
+Create a research brief on: {topic}
+
+Structure:
+## Executive Summary
+(3 sentences: what you found, key tension, recommendation)
+
+## What the Web Says
+(authoritative sources, established knowledge, data)
+
+## What Twitter Says
+(real-time discourse, emerging opinions, sentiment)
+
+## Where They Agree
+(consensus points both channels support)
+
+## Where They Diverge
+(and why — timing lag? different audiences? misinformation?)
+
+## Blind Spots
+(what neither channel covers well)
+
+## Bottom Line
+(synthesized position for someone making a decision on this topic)
+
+## Sources
+(web URLs and notable tweet references)
+"""
+  context: { web_research, twitter_research }
+
+# Phase 3: Save the deliverable
+session "Save the research brief to ./output/research-{topic}.md"
+  context: brief

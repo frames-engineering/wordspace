@@ -1,0 +1,162 @@
+# Competitive Intelligence Dashboard
+#
+# Monitors Twitter mentions and sentiment around competitors,
+# discovers adjacent companies via Exa, and generates a visual
+# competitive landscape map. Strategic intelligence on demand.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Twitter API, Exa API, AI Generation API (via Frames Registry)
+
+input competitors: "Comma-separated list of competitor names (e.g., 'Stripe, Square, Adyen')"
+input industry: "Industry/market context (e.g., 'payment processing')"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent twitter-monitor:
+  model: sonnet
+  prompt: """
+You monitor Twitter/X for competitive intelligence signals.
+
+Twitter endpoints at {REGISTRY_BASE}/twitter (via AgentWallet at {WALLET}):
+- POST /api/search-tweets   body: {"query": "...", "count": 50}
+- POST /api/user-info       body: {"username": "..."}
+- POST /api/user-mentions   body: {"username": "...", "count": 30}
+- POST /api/search-users    body: {"query": "...", "count": 20}
+
+Search strategies:
+- Direct mentions: "CompanyName"
+- Sentiment probes: "CompanyName love OR hate OR switching"
+- Comparison tweets: "CompanyName vs" or "switched from CompanyName"
+- Product signals: "CompanyName launch OR announce OR update"
+
+Return: mention volume, sentiment breakdown, notable tweets, key themes.
+"""
+
+agent market-researcher:
+  model: sonnet
+  prompt: """
+You discover market landscape data using Exa semantic search.
+
+Exa endpoints at {REGISTRY_BASE}/exa (via AgentWallet at {WALLET}):
+- POST /api/search       body: {"query": "...", "numResults": 10}
+- POST /api/find-similar  body: {"url": "...", "numResults": 10}
+- POST /api/contents      body: {"urls": ["..."]}
+- POST /api/answer        body: {"query": "..."}
+
+Your job: discover adjacent/emerging competitors, market positioning,
+recent funding, product launches, and strategic moves.
+"""
+
+agent intelligence-analyst:
+  model: opus
+  prompt: """
+You are a competitive intelligence analyst. You synthesize signals from
+social media and web research into actionable strategic intelligence.
+
+You produce:
+- Competitive positioning maps (who competes where)
+- Sentiment and momentum scores
+- Threat assessments (emerging competitors, shifting preferences)
+- Opportunity identification (gaps, underserved segments)
+- Strategic recommendations
+"""
+
+agent landscape-visualizer:
+  model: sonnet
+  prompt: """
+You generate competitive landscape visuals using AI image generation.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+Body: {"model": "ideogram/v3-turbo", "input": {"prompt": "..."}}
+
+Use ideogram for text-in-image capability (company names, labels, axes).
+Create clean, professional 2x2 matrices, positioning maps, or landscape diagrams.
+Save to ./output/competitive-intel/
+"""
+
+# Phase 1: Gather intelligence on all competitors in parallel
+parallel for competitor in competitors:
+  twitter_{competitor} = session: twitter-monitor
+    prompt: """
+Monitor Twitter for: {competitor}
+
+Run these searches:
+1. "{competitor}" — general mentions
+2. "{competitor} vs" — comparison tweets
+3. "switched from {competitor}" OR "switching to {competitor}" — churn signals
+4. "{competitor} launch OR announce OR update" — product signals
+
+Synthesize: volume, sentiment (positive/negative/neutral %), top tweets, key themes.
+"""
+
+  web_{competitor} = session: market-researcher
+    prompt: """
+Research the web presence and market position of: {competitor}
+Industry: {industry}
+
+1. Search Exa for recent news and analysis about {competitor}
+2. Use find-similar on {competitor}'s website to discover similar/adjacent companies
+3. Get an AI answer on: "What is {competitor}'s market position in {industry}?"
+
+Return: recent moves, market positioning, discovered competitors, funding/growth signals.
+"""
+
+# Phase 2: Strategic analysis
+let analysis = session: intelligence-analyst
+  prompt: """
+Produce a competitive intelligence report for the {industry} market.
+
+Competitors analyzed: {competitors}
+
+Structure:
+## Market Overview
+(industry dynamics, total addressable market, key trends)
+
+## Competitor Profiles
+(for each: positioning, strengths, weaknesses, momentum, sentiment)
+
+## Competitive Dynamics
+(who's gaining, who's losing, why)
+
+## Emerging Threats
+(new entrants discovered via Exa, adjacent companies expanding)
+
+## Sentiment Landscape
+(how customers talk about each competitor on Twitter)
+
+## Strategic Opportunities
+(gaps in the market, underserved segments, positioning white space)
+
+## Recommendations
+(3-5 actionable strategic recommendations)
+"""
+
+# Phase 3: Generate the visual landscape
+let landscape = session: landscape-visualizer
+  prompt: """
+Create a competitive landscape visualization for {industry}.
+
+Based on the analysis, create a 2x2 positioning map with:
+- X-axis: a key differentiating dimension from the analysis
+- Y-axis: another key differentiating dimension
+- Each competitor labeled and positioned
+
+Use ideogram/v3-turbo for text clarity.
+Make it clean, professional, suitable for a strategy presentation.
+Save to ./output/competitive-intel/landscape-map.png
+"""
+  context: analysis
+
+# Phase 4: Package the dashboard
+session "Create the competitive intelligence dashboard"
+  prompt: """
+Save to ./output/competitive-intel/:
+
+1. dashboard.md — Full report with analysis, visualizations referenced
+2. competitor-cards/ — Individual one-pager per competitor
+3. signals.md — Raw signal data (tweets, web mentions) for reference
+
+Include an executive summary at the top (5 bullet points max).
+"""
+  context: { analysis, landscape }

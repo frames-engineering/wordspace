@@ -1,0 +1,149 @@
+# "What's Happening" Visual Newsletter
+#
+# Combines Twitter/X trending topics with Exa AI-powered research for context,
+# generates a hero image for each story, and assembles a newsletter-ready
+# package with HTML and markdown output.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Twitter API, Exa API, AI Generation API (via Frames Registry)
+
+input edition_name: "Newsletter edition name (e.g., 'Tech Weekly', 'AI Digest')"
+input num_stories: "Number of stories to cover (e.g., '5')"
+input style: "Visual style for hero images (e.g., 'minimalist', 'vibrant', 'editorial')"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent trend-scanner:
+  model: sonnet
+  prompt: """
+You scan Twitter/X for the most newsworthy trending topics.
+
+Twitter endpoints at {REGISTRY_BASE}/twitter (via AgentWallet at {WALLET}):
+- POST /api/trends         body: {"location": "Worldwide"}
+- POST /api/search-tweets  body: {"query": "...", "count": 30}
+
+Your job:
+1. Fetch worldwide trends
+2. For each top trend, do a quick tweet search to gauge the story
+3. Rank by newsworthiness (impact, relevance, novelty)
+4. Return the top N stories with: trend name, tweet volume, sample tweets, initial take
+"""
+
+agent context-builder:
+  model: sonnet
+  prompt: """
+You research trending stories using Exa to provide authoritative context.
+
+Exa endpoints at {REGISTRY_BASE}/exa (via AgentWallet at {WALLET}):
+- POST /api/answer    body: {"query": "..."}
+- POST /api/search    body: {"query": "...", "numResults": 5}
+- POST /api/contents  body: {"urls": ["..."]}
+
+For each story, provide:
+- What happened (factual summary)
+- Why it matters (context and implications)
+- Key sources (with URLs)
+- A compelling one-line hook for the newsletter
+"""
+
+agent hero-image-gen:
+  model: sonnet
+  prompt: """
+You create hero images for newsletter stories using AI generation.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+
+Model recommendations by style:
+- minimalist: flux/schnell ($0.004) — clean, fast
+- vibrant: google/imagen-4-fast ($0.03) — rich colors, detailed
+- editorial: ideogram/v3-turbo ($0.04) — great with text elements
+
+Create images that:
+- Capture the story's essence visually (not literally)
+- Work as newsletter hero banners (wide aspect ratio)
+- Match the specified visual style
+- Are abstract/conceptual rather than photorealistic
+
+Save each to ./output/newsletter/images/
+"""
+
+agent newsletter-assembler:
+  model: opus
+  prompt: """
+You are a newsletter editor and designer. You assemble stories,
+context, and visuals into a polished newsletter. You write with:
+- Sharp, engaging headlines
+- Concise but informative summaries (3-4 sentences per story)
+- A conversational but authoritative voice
+- Clean structure and visual hierarchy
+
+Output both markdown and basic HTML versions.
+"""
+
+# Phase 1: Scan for top stories
+let raw_trends = session: trend-scanner
+  prompt: """
+Scan Twitter/X for today's top stories.
+
+Fetch worldwide trends, then search tweets for the top {num_stories} most
+newsworthy trends. Focus on:
+- Stories with real substance (not just memes, unless culturally significant)
+- High engagement and tweet volume
+- Diverse topics (don't pick 5 stories about the same thing)
+
+Return a ranked list with trend name, volume, and representative tweets.
+"""
+
+# Phase 2: Research context for all stories in parallel
+let stories = session "Extract the {num_stories} story topics as a list"
+  context: raw_trends
+
+parallel for story in stories:
+  context_{story} = session: context-builder
+    prompt: """
+Research context for this trending story: {story}
+
+1. Use Exa /api/answer: "What is happening with {story} and why does it matter?"
+2. Use Exa /api/search: find 3-5 authoritative articles about it
+3. Extract key quotes or data points from the best source
+
+Return: factual summary, why it matters, sources, and a newsletter hook line.
+"""
+
+# Phase 3: Generate hero images for all stories in parallel
+parallel for story in stories:
+  hero_{story} = session: hero-image-gen
+    prompt: """
+Create a hero image for this newsletter story: {story}
+
+Story context:
+{context_{story}}
+
+Visual style: {style}
+Aspect ratio: wide/landscape (suitable for newsletter banner)
+Save to ./output/newsletter/images/{story}-hero.png
+"""
+    context: context_{story}
+
+# Phase 4: Assemble the newsletter
+session: newsletter-assembler
+  prompt: """
+Assemble the "{edition_name}" newsletter.
+
+Create two files:
+1. ./output/newsletter/{edition_name}.md — Markdown version
+2. ./output/newsletter/{edition_name}.html — HTML version with inline styles
+
+Structure:
+- Header: "{edition_name}" + today's date
+- For each story:
+  - Hero image reference
+  - Headline (sharp, engaging)
+  - Summary (3-4 sentences combining Twitter signals + Exa context)
+  - "Read more" links to sources
+- Footer: "Powered by Frames Registry" + generation timestamp
+
+Make it look professional and ready to send.
+"""
+  context: { raw_trends, stories }

@@ -1,0 +1,137 @@
+# Meme Factory
+#
+# Searches Twitter/X for funny, viral, or absurd tweets, then generates
+# custom visual memes and emoji-style art inspired by each tweet's content.
+# A creative content generator that turns tweets into shareable visuals.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Twitter API, AI Generation API (via Frames Registry)
+
+input vibe: "What kind of tweets to find (e.g., 'tech humor', 'absurd takes', 'wholesome', 'startup cringe')"
+input count: "How many memes to generate (e.g., '5')"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent tweet-hunter:
+  model: sonnet
+  prompt: """
+You find viral, funny, and visually inspiring tweets on Twitter/X.
+
+Twitter endpoints at {REGISTRY_BASE}/twitter (via AgentWallet at {WALLET}):
+- POST /api/search-tweets  body: {"query": "...", "count": 50}
+- POST /api/tweet-replies  body: {"tweetId": "..."}
+
+Search strategies for finding meme-worthy content:
+- Use natural language queries matching the desired vibe
+- Look for high engagement (likes, retweets, replies)
+- Prioritize tweets that paint a vivid picture or have absurd juxtaposition
+- Include "min_faves:1000" in query for viral content
+
+Return: tweet text, author, engagement stats, and why it's meme-worthy.
+"""
+
+agent meme-director:
+  model: opus
+  prompt: """
+You are a meme creative director. You take tweets and design meme concepts.
+
+For each tweet, you decide:
+1. **Format**: classic meme, emoji art, illustrated scene, abstract mood piece
+2. **Visual description**: detailed prompt for the AI image generator
+3. **Text overlay**: what text (if any) should appear on the image
+4. **Model choice**: which AI model best fits this meme style
+
+Model menu:
+- fofr/sdxl-emoji ($0.01) — emoji-style art, fun and cartoonish
+- flux/schnell ($0.004) — fast general purpose, good for scenes
+- prunaai/z-image-turbo ($0.006) — quick stylized images
+- ideogram/v3-turbo ($0.04) — best when text must appear in the image
+- xai/grok-2-image ($0.09) — high quality, understands humor well
+
+Match the model to the meme. Emoji tweets get sdxl-emoji. Text-heavy memes
+get ideogram. Abstract vibes get flux.
+"""
+
+agent image-generator:
+  model: sonnet
+  prompt: """
+You generate meme images using AI models via the Frames Registry.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+Body: {"model": "<model_name>", "input": {"prompt": "..."}}
+
+Follow the creative director's exact specifications for model choice and prompt.
+Save each image to ./output/memes/ with a descriptive filename.
+Return the file path and generation details.
+"""
+
+# Phase 1: Hunt for meme-worthy tweets
+let tweets = session: tweet-hunter
+  prompt: """
+Find {count} meme-worthy tweets matching this vibe: "{vibe}"
+
+Search Twitter with queries like:
+- "{vibe}" min_faves:500
+- Related humor keywords for this vibe
+- Try 2-3 different search angles to get variety
+
+Select the {count} best candidates. For each, explain:
+- The tweet text and author
+- Engagement stats
+- Why it's visually meme-able (what makes it work as an image)
+"""
+
+# Phase 2: Design meme concepts for all tweets
+let concepts = session: meme-director
+  prompt: """
+Design meme concepts for each of these tweets.
+
+Tweets:
+{tweets}
+
+For each tweet, produce:
+1. Meme format (emoji art / illustrated scene / text meme / mood piece)
+2. AI model to use (from the model menu)
+3. Detailed image generation prompt (be specific about composition, style, colors)
+4. Text overlay (if any)
+5. Suggested filename
+
+Be creative. The goal is shareable, funny, visually striking content.
+"""
+  context: tweets
+
+# Phase 3: Generate all meme images in parallel
+parallel for concept in concepts:
+  meme_{concept} = session: image-generator
+    prompt: """
+Generate this meme:
+
+{concept}
+
+Use the specified model and prompt exactly as designed.
+Save to ./output/memes/<suggested_filename>.png
+"""
+    context: concept
+
+# Phase 4: Create the gallery
+session "Assemble the meme gallery"
+  prompt: """
+Create ./output/memes/gallery.md with:
+
+# Meme Factory Output
+**Vibe:** {vibe}
+**Generated:** today's date
+
+For each meme:
+- The original tweet (text + author + link placeholder)
+- The generated image reference
+- Model used and cost
+- A suggested caption for posting
+
+Also create ./output/memes/gallery.html with a simple grid layout
+showing all memes with their source tweets.
+
+End with total cost breakdown.
+"""
+  context: { tweets, concepts }

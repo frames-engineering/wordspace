@@ -1,0 +1,166 @@
+# Thread-to-Video
+#
+# Takes a viral Twitter/X thread, extracts the narrative arc,
+# and generates a short AI video with visuals for each key point.
+# Instant thread-to-content repurposing.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Twitter API, AI Generation API (via Frames Registry)
+
+input thread_url: "URL or tweet ID of the first tweet in the thread"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent thread-fetcher:
+  model: sonnet
+  prompt: """
+You fetch Twitter thread data via the Frames Registry.
+
+Twitter endpoints at {REGISTRY_BASE}/twitter (via AgentWallet at {WALLET}):
+- POST /api/tweet-thread  body: {"tweetId": "..."}
+- POST /api/tweets-by-ids body: {"tweetIds": ["..."]}
+- POST /api/user-info     body: {"username": "..."}
+
+Extract the tweet ID from a URL if needed (the numeric ID at the end).
+Return the full thread text in order, plus author info.
+"""
+
+agent narrative-designer:
+  model: opus
+  prompt: """
+You are a video narrative designer. You transform written threads into
+visual storytelling scripts. For each scene you define:
+- Scene number and duration (in seconds)
+- Visual description (what should appear on screen)
+- Text overlay / caption
+- Mood/tone for the visual
+
+Keep total video under 30 seconds for cost efficiency.
+Aim for 3-5 scenes that capture the thread's arc:
+  hook → context → key insight → payoff
+"""
+
+agent video-producer:
+  model: sonnet
+  prompt: """
+You generate AI videos using the Frames Registry.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+
+Available video models (pick based on needs):
+- bytedance/seedance-1-pro-fast  — $0.02-0.08/sec, good balance of speed and quality
+- kwaivgi/kling-v2.5-turbo-pro   — $0.09/sec, high quality
+- wan-video/wan-2.2-t2v-fast     — $0.12 flat, text-to-video
+- google/veo-3-fast              — $0.12-0.18/sec, with audio support
+
+For captions overlay:
+- shreejalmaharjan-27/tiktok-short-captions — $0.002/sec
+
+Body format:
+{"model": "<model>", "input": {"prompt": "...", "duration": <seconds>}}
+
+Save outputs to ./output/thread-videos/
+"""
+
+agent thumbnail-creator:
+  model: sonnet
+  prompt: """
+You generate eye-catching thumbnails using AI image generation.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+Body: {"model": "flux/schnell", "input": {"prompt": "..."}}
+
+Create bold, scroll-stopping thumbnails suitable for social media.
+Save to ./output/thread-videos/
+"""
+
+# Phase 1: Fetch the thread
+let thread = session: thread-fetcher
+  prompt: """
+Fetch the complete thread starting from: {thread_url}
+
+Extract the tweet ID from the URL if it's a full URL.
+Get all tweets in the thread in chronological order.
+Also fetch the author's profile info.
+Return: author name, handle, each tweet text in order, engagement stats.
+"""
+
+# Phase 2: Design the narrative
+let script = session: narrative-designer
+  prompt: """
+Transform this Twitter thread into a short video script (under 30 seconds).
+
+Thread content:
+{thread}
+
+Create a scene-by-scene breakdown:
+- 3-5 scenes total
+- Each scene: duration, visual description, text overlay
+- Arc: hook → build → insight → payoff
+- Style: modern, clean, dynamic (think viral short-form content)
+
+Also suggest:
+- A video title
+- Background music mood (energetic, contemplative, dramatic, etc.)
+"""
+  context: thread
+
+# Phase 3: Generate video and thumbnail in parallel
+parallel:
+  video = session: video-producer
+    prompt: """
+Generate the video based on this script.
+
+Script:
+{script}
+
+Approach:
+1. For each scene, generate a video clip using the scene's visual description
+2. Use bytedance/seedance-1-pro-fast for best cost/quality ratio
+3. Keep each clip to the specified duration
+4. Save individual clips and note their file paths
+
+If the model supports it, generate as one continuous video from a combined prompt.
+Save to ./output/thread-videos/
+"""
+    context: script
+
+  thumbnail = session: thumbnail-creator
+    prompt: """
+Create a thumbnail for this thread video.
+
+Thread summary: {thread}
+Video title from script: {script}
+
+Make it bold, high-contrast, with a clear visual hook.
+Save to ./output/thread-videos/thumbnail.png
+"""
+    context: { thread, script }
+
+# Phase 4: Add captions
+let captioned = session: video-producer
+  prompt: """
+Add TikTok-style captions to the video.
+
+Use model: shreejalmaharjan-27/tiktok-short-captions
+Apply the text overlays from the script to the generated video.
+
+Script reference:
+{script}
+
+Save final video to ./output/thread-videos/final-with-captions.mp4
+"""
+  context: { video, script }
+
+# Phase 5: Package output
+session "Create a summary document"
+  prompt: """
+Create ./output/thread-videos/README.md with:
+- Original thread author and link
+- Video script used
+- Generated assets list (video files, thumbnail)
+- Suggested posting caption for sharing the video
+- Cost breakdown of API calls made
+"""
+  context: { thread, script, video, thumbnail, captioned }

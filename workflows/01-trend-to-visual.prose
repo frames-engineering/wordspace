@@ -1,0 +1,127 @@
+# Trend-to-Visual Pipeline
+#
+# Pulls Twitter/X trending topics, researches context via Exa semantic search,
+# and generates a visual infographic-style image for each top trend.
+# A daily "visual briefing" generator.
+#
+# Requires: AgentWallet funded with USDC (Base or Solana)
+# Services: Twitter API, Exa API, AI Generation API (via Frames Registry)
+
+input location: "Twitter trends location (e.g., 'United States', 'Worldwide')"
+input num_trends: "How many trends to visualize (e.g., '3')"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const AGENTWALLET_URL = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent data-fetcher:
+  model: sonnet
+  prompt: """
+You fetch data from the Frames Registry via AgentWallet.
+To make a paid API call, use curl:
+
+  curl -X POST {AGENTWALLET_URL} \
+    -H "Content-Type: application/json" \
+    -d '{
+      "url": "<endpoint_url>",
+      "method": "POST",
+      "body": <request_body_json>
+    }'
+
+Always return the raw JSON response.
+"""
+
+agent researcher:
+  model: sonnet
+  prompt: """
+You are a research analyst. You use Exa semantic search via the Frames Registry
+to find context, explanations, and background on topics.
+
+Exa endpoints (via AgentWallet):
+- Search: POST {REGISTRY_BASE}/exa/api/search  body: {"query": "...", "numResults": 5}
+- AI Answer: POST {REGISTRY_BASE}/exa/api/answer  body: {"query": "..."}
+- Contents: POST {REGISTRY_BASE}/exa/api/contents  body: {"urls": ["..."]}
+
+Return structured findings: key facts, context, and why this topic matters right now.
+"""
+
+agent visual-creator:
+  model: sonnet
+  prompt: """
+You generate images using the AI Generation API via Frames Registry.
+
+Endpoint (via AgentWallet):
+  POST {REGISTRY_BASE}/ai-gen/api/invoke
+  body: {"model": "<model_name>", "input": {"prompt": "..."}}
+
+Recommended models:
+- flux/schnell ($0.004) — fast, good quality
+- google/imagen-4-fast ($0.03) — high quality
+- ideogram/v3-turbo ($0.04) — great with text in images
+
+Craft detailed, specific prompts for infographic-style visuals.
+Save generated images to ./output/trend-visuals/
+"""
+
+agent synthesizer:
+  model: sonnet
+  prompt: """
+You combine trend data, research context, and generated visuals into a
+polished daily briefing document (markdown). Include:
+- Trend name and rank
+- Why it's trending (context from research)
+- Link to the generated visual
+- Key takeaway in one sentence
+"""
+
+# Phase 1: Fetch trending topics
+let trends = session: data-fetcher
+  prompt: """
+Fetch Twitter/X trending topics.
+
+Call: POST {REGISTRY_BASE}/twitter/api/trends
+Body: {{"location": "{location}"}}
+
+Return the top {num_trends} trends with their names and tweet volumes.
+"""
+
+# Phase 2: Research each trend in parallel
+let trend_names = session "Extract just the trend names as a list from the trends data"
+  context: trends
+
+parallel for trend in trend_names:
+  research_{trend} = session: researcher
+    prompt: """
+Research this trending topic: {trend}
+
+1. Use Exa /api/answer to get a quick AI-powered explanation of why this is trending
+2. Use Exa /api/search to find 3-5 recent articles about it
+3. Summarize: what happened, why people care, key facts
+"""
+
+# Phase 3: Generate visuals for each trend in parallel
+parallel for trend in trend_names:
+  visual_{trend} = session: visual-creator
+    prompt: """
+Create an infographic-style visual for this trend: {trend}
+
+Research context:
+{research_{trend}}
+
+Design a visually striking image that captures the essence of this trend.
+Use a modern, clean infographic style. Include the trend name as text.
+Use ideogram/v3-turbo for text-in-image capability.
+Save to ./output/trend-visuals/{trend}.png
+"""
+
+# Phase 4: Assemble the daily briefing
+session: synthesizer
+  prompt: """
+Create a daily visual briefing document.
+
+Location: {location}
+Date: today
+
+Combine all trend data, research, and visuals into a polished markdown file.
+Save to ./output/trend-briefing.md
+"""
+  context: { trends, trend_names }

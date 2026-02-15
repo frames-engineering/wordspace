@@ -1,0 +1,140 @@
+# Twitter Account Analyzer
+#
+# Fetches a user's profile, recent tweets, and follower network from Twitter,
+# finds similar voices on the web via Exa, and generates a visual "brand card"
+# using AI image generation. Outputs a comprehensive profile analysis.
+#
+# Requires: AgentWallet funded with USDC
+# Services: Twitter API, Exa API, AI Generation API (via Frames Registry)
+
+input username: "Twitter/X username to analyze (without @)"
+
+const REGISTRY_BASE = "https://registry.mcpay.tech/api/service"
+const WALLET = "https://agentwallet.mcpay.tech/x402/fetch"
+
+agent twitter-fetcher:
+  model: sonnet
+  prompt: """
+You fetch Twitter data via the Frames Registry through AgentWallet.
+
+To call any endpoint:
+  curl -X POST {WALLET} -H "Content-Type: application/json" \
+    -d '{"url": "<endpoint>", "method": "POST", "body": <json>}'
+
+Available Twitter endpoints at {REGISTRY_BASE}/twitter:
+- /api/user-info       body: {"username": "..."}
+- /api/user-tweets     body: {"username": "...", "count": 20}
+- /api/user-followers  body: {"username": "...", "count": 50}
+- /api/user-following  body: {"username": "...", "count": 50}
+
+Return raw JSON responses.
+"""
+
+agent web-researcher:
+  model: sonnet
+  prompt: """
+You use Exa semantic search to find web presence and similar voices.
+
+Exa endpoints at {REGISTRY_BASE}/exa:
+- /api/search        body: {"query": "...", "numResults": 10}
+- /api/find-similar  body: {"url": "...", "numResults": 5}
+- /api/contents      body: {"urls": ["..."]}
+
+Use AgentWallet at {WALLET} to make all calls.
+"""
+
+agent profile-analyst:
+  model: opus
+  prompt: """
+You are a brand and audience analyst. You examine social media profiles
+and produce insightful analysis covering:
+- Content themes and voice
+- Audience demographics and engagement patterns
+- Brand positioning and unique angle
+- Growth opportunities
+Deliver structured, actionable analysis.
+"""
+
+agent card-designer:
+  model: sonnet
+  prompt: """
+You generate visual "brand cards" using AI image generation.
+
+Endpoint: POST {REGISTRY_BASE}/ai-gen/api/invoke (via AgentWallet at {WALLET})
+Body: {"model": "flux/schnell", "input": {"prompt": "..."}}
+
+Design a sleek, modern profile card that visually represents a person's brand.
+Think: color palette reflecting their vibe, abstract shapes for their themes,
+clean typography feel. NOT a photo of them — an abstract brand visualization.
+Save output to ./output/profile-cards/
+"""
+
+# Phase 1: Fetch all Twitter data in parallel
+parallel:
+  user_info = session: twitter-fetcher
+    prompt: "Fetch user info for username: {username}"
+
+  recent_tweets = session: twitter-fetcher
+    prompt: "Fetch the 20 most recent tweets for: {username}"
+
+  followers = session: twitter-fetcher
+    prompt: "Fetch top 50 followers for: {username}"
+
+  following = session: twitter-fetcher
+    prompt: "Fetch top 50 accounts that {username} follows"
+
+# Phase 2: Find similar voices on the web
+let web_presence = session: web-researcher
+  prompt: """
+Research the web presence for @{username}.
+
+1. Search Exa for "{username}" and their known topics/expertise
+2. Use find-similar on https://x.com/{username} to discover similar voices
+3. Extract content from their top mentions/features on the web
+
+Return: web mentions, similar creators, and their positioning in the space.
+"""
+  context: user_info
+
+# Phase 3: Deep analysis
+let analysis = session: profile-analyst
+  prompt: """
+Analyze @{username}'s Twitter presence and brand.
+
+Produce a structured report:
+1. **Profile Summary** — who they are, what they do
+2. **Content Analysis** — top themes, posting patterns, voice/tone
+3. **Audience Profile** — who follows them, engagement quality
+4. **Network Analysis** — who they follow, circles they run in
+5. **Web Footprint** — presence beyond Twitter
+6. **Similar Voices** — who else occupies this space
+7. **Opportunities** — underserved angles, growth levers
+"""
+  context: { user_info, recent_tweets, followers, following, web_presence }
+
+# Phase 4: Generate the visual brand card
+let brand_card = session: card-designer
+  prompt: """
+Create a visual brand card for @{username}.
+
+Based on this analysis:
+{analysis}
+
+Design an abstract visual that captures their brand essence.
+Choose colors and shapes that reflect their themes and vibe.
+Save to ./output/profile-cards/{username}-brand-card.png
+"""
+  context: analysis
+
+# Phase 5: Package the final output
+session "Package final deliverable"
+  prompt: """
+Create a polished markdown report at ./output/profile-analysis-{username}.md
+
+Include:
+1. The full analysis
+2. Reference to the brand card image
+3. An executive summary at the top (3-4 sentences)
+4. Recommended actions section at the bottom
+"""
+  context: { analysis, brand_card }
