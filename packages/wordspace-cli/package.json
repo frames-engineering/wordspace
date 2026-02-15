@@ -1,0 +1,21 @@
+{
+  "name": "wordspace",
+  "version": "0.0.6",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "wordspace": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22"
+  }
+}
