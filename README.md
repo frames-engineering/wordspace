@@ -1,25 +1,27 @@
-# Wordspace Demos
+# Wordspace
 
-Example workflows and skill configurations for building AI agent systems with [OpenProse](https://github.com/openprose/prose), [AgentWallet](https://frames.ag), and the [Frames Registry](https://registry.mcpay.tech).
+A CLI for bootstrapping AI agent workspaces with ready-to-run workflows.
 
-## What's Inside
+Workflows are `.prose` programs that orchestrate multi-agent systems using [OpenProse](https://github.com/openprose/prose), [AgentWallet](https://frames.ag), and the [Frames Registry](https://registry.mcpay.tech).
 
-### Workflows
+## Quick Start
 
-| File | Description |
-|------|-------------|
-| [`workflows/x-daily-pulse.prose`](workflows/x-daily-pulse.prose) | Multi-agent Twitter/X intelligence briefing. Fetches real tweet data via paid API calls, analyzes engagement, and produces a daily digest with draft replies. |
+```bash
+npx wordspace init
+```
 
-### Skills
+This will:
 
-This repo bundles four Claude Code skills (symlinked from `.agents/skills/`):
+1. Show available workflows and let you pick which ones to download
+2. Configure Claude Code permissions
+3. Create the `output/` directory
 
-| Skill | Description |
-|-------|-------------|
-| **open-prose** | Programming language for AI sessions. Orchestrate multi-agent workflows with `.prose` files. |
-| **agentwallet** | Server-side crypto wallets for AI agents. Handles x402 micropayments, transfers, and policy-controlled signing. |
-| **registry** | Pay-per-call API gateway (Twitter, Exa search, AI generation, x402 test). No API keys needed. |
-| **websh** | A shell for the web. Navigate URLs like directories with `cd`, `ls`, `grep`, and `cat`. |
+Then start Claude Code and run a workflow:
+
+```bash
+claude
+prose run workflows/x-daily-pulse.prose
+```
 
 ## Prerequisites
 
@@ -27,13 +29,42 @@ This repo bundles four Claude Code skills (symlinked from `.agents/skills/`):
 - An [AgentWallet](https://frames.ag) account (for paid API workflows)
 - Wallet funded with USDC (even $1 covers hundreds of API calls)
 
-## Quick Start
+## Commands
 
-### 1. Install skills
+### `wordspace init`
 
-Skills are already bundled in this repo. Claude Code picks them up automatically from the `skills/` directory.
+Bootstrap a new project. Presents an interactive picker to choose which workflows to download.
 
-### 2. Run the X Daily Pulse workflow
+```bash
+npx wordspace init           # interactive setup
+npx wordspace init --force   # re-download existing workflows
+```
+
+### `wordspace search [query]`
+
+Browse available workflows from the repository.
+
+```bash
+npx wordspace search          # list all
+npx wordspace search pulse    # filter by keyword
+```
+
+### `wordspace add <name>`
+
+Download specific workflows by name.
+
+```bash
+npx wordspace add x-daily-pulse
+npx wordspace add x-daily-pulse --force   # overwrite existing
+```
+
+## Workflows
+
+| File | Description |
+|------|-------------|
+| [`x-daily-pulse.prose`](workflows/x-daily-pulse.prose) | Multi-agent Twitter/X intelligence briefing. Fetches real tweet data via paid API calls, analyzes engagement, and produces a daily digest with draft replies. |
+
+### Running X Daily Pulse
 
 ```bash
 prose run workflows/x-daily-pulse.prose
@@ -48,19 +79,6 @@ You'll be prompted for:
 The workflow spawns four specialized agents (data-fetcher, analyst, engagement-coach, briefing-writer) that fetch live Twitter data, analyze engagement patterns, and produce a markdown briefing saved to `./output/`.
 
 **Cost:** ~$0.10-0.20 per run depending on the number of accounts and topics.
-
-### 3. Explore other skills
-
-```bash
-# Browse the web like a filesystem
-websh
-
-# Check your wallet balance
-agentwallet
-
-# Discover available APIs
-# Visit https://registry.mcpay.tech/api/services
-```
 
 ## How It Works
 
@@ -94,23 +112,6 @@ agentwallet
 3. **Agents** call external APIs through the **Frames Registry**
 4. **AgentWallet** handles payments automatically via the x402 protocol
 5. Results flow back through the agent pipeline into a final output
-
-## Project Structure
-
-```
-wordspace-demos/
-├── workflows/              # Runnable .prose programs
-│   └── x-daily-pulse.prose
-├── skills/                 # Symlinks to bundled skills
-│   ├── open-prose -> ../.agents/skills/open-prose
-│   ├── agentwallet -> ../.agents/skills/agentwallet
-│   ├── registry -> ../.agents/skills/registry
-│   └── websh -> ../.agents/skills/websh
-├── .agents/skills/         # Skill source files
-├── .prose/                 # Runtime state (auto-generated)
-│   └── runs/               # Execution logs and bindings
-└── .claude/                # Claude Code settings
-```
 
 ## Links
 
