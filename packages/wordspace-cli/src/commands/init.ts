@@ -25,8 +25,7 @@ export async function init(force: boolean) {
 Your project is ready. Next steps:
 
   1. Open this directory in your editor
-  2. Start Claude Code:  claude
-  3. Run a workflow:     prose run workflows/<name>.prose
+  2. Run a workflow:  wordspace run workflows/<name>.prose
 
 Browse more workflows:  wordspace search
 Add a workflow:         wordspace add <name>

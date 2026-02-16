@@ -6,7 +6,7 @@ import { add } from "./commands/add.js";
 import { run } from "./commands/run.js";
 import * as log from "./lib/log.js";
 
-const VERSION = "0.0.9";
+const VERSION = "0.0.10";
 
 const HELP = `
 Usage: wordspace <command> [options]
@@ -15,12 +15,13 @@ Commands:
   init          Bootstrap a new wordspace project
   search [q]    List available workflows (optionally filter by query)
   add <name>    Download specific workflow(s) by name
-  run <target>  Run a .prose workflow via Claude Code
+  run <target>  Run a .prose workflow via a coding agent
 
 Options:
-  --force       Re-run all steps / overwrite existing files
-  --help        Show this help message
-  --version     Show version number
+  --force            Re-run all steps / overwrite existing files
+  --harness <name>   Use a specific coding agent (e.g. claude, aider, goose)
+  --help             Show this help message
+  --version          Show version number
 `.trim();
 
 async function main() {
@@ -36,7 +37,18 @@ async function main() {
     process.exit(0);
   }
 
-  const positional = args.filter((a) => !a.startsWith("-"));
+  const harnessIdx = args.indexOf("--harness");
+  const harnessArg = harnessIdx !== -1 ? args[harnessIdx + 1] : undefined;
+
+  // Filter out flags and their values from positional args
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--harness") {
+      i++; // skip the value
+    } else if (!args[i].startsWith("-")) {
+      positional.push(args[i]);
+    }
+  }
   const command = positional[0];
   const force = args.includes("--force");
 
@@ -47,7 +59,7 @@ async function main() {
   } else if (command === "add") {
     await add(positional.slice(1), force);
   } else if (command === "run") {
-    await run(positional[1], force);
+    await run(positional[1], force, harnessArg);
   } else if (!command) {
     console.log(HELP);
     process.exit(0);

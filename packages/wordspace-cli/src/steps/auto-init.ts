@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { setupClaude } from "./setup-claude.js";
 import { createDirs } from "./create-dirs.js";
+import type { Harness } from "../lib/harness.js";
 import * as log from "../lib/log.js";
 
 const SKILL_PACKAGES = [
@@ -24,8 +25,12 @@ function installSkills(cwd: string) {
 }
 
 /** Silently initialize the project if not already done. */
-export function ensureInit(cwd: string) {
-  const hasSettings = existsSync(join(cwd, ".claude", "settings.local.json"));
+export function ensureInit(cwd: string, harness: Harness) {
+  const isClaude = harness.bin === "claude";
+
+  const hasSettings = isClaude
+    ? existsSync(join(cwd, ".claude", "settings.local.json"))
+    : true; // non-Claude harnesses don't need Claude settings
   const hasOutput = existsSync(join(cwd, "output"));
   const skillsDir = join(cwd, ".agents", "skills");
   const hasSkills =
@@ -37,9 +42,11 @@ export function ensureInit(cwd: string) {
   if (hasSettings && hasOutput && hasSkills) return;
 
   log.info("Auto-initializing project...");
-  if (!hasSettings || !hasOutput) {
-    setupClaude(cwd);
+  if (!hasOutput) {
     createDirs(cwd);
+  }
+  if (isClaude && !hasSettings) {
+    setupClaude(cwd);
   }
   if (!hasSkills) {
     installSkills(cwd);

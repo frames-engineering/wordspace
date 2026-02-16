@@ -30,6 +30,41 @@ export async function pickMany<T>(
   return parseSelection(answer, items);
 }
 
+/**
+ * Prompt the user to pick a single item from a numbered list.
+ *
+ * In non-TTY environments (CI), auto-selects the first item.
+ */
+export async function pickOne<T>(
+  items: T[],
+  label: (item: T, index: number) => string,
+  prompt: string,
+): Promise<T> {
+  if (items.length === 1) return items[0];
+
+  // Non-TTY: auto-select first
+  if (!process.stdin.isTTY) {
+    return items[0];
+  }
+
+  // Print numbered list
+  for (let i = 0; i < items.length; i++) {
+    console.log(`  ${String(i + 1).padStart(2)}  ${label(items[i], i)}`);
+  }
+  console.log();
+
+  // Keep asking until we get a valid answer
+  while (true) {
+    const answer = await ask(`${prompt} [1-${items.length}]: `);
+    const n = parseInt(answer, 10);
+    if (!isNaN(n) && n >= 1 && n <= items.length) {
+      return items[n - 1];
+    }
+    // Default to first item on empty input
+    if (answer === "") return items[0];
+  }
+}
+
 function ask(prompt: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
