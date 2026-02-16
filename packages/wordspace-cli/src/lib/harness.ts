@@ -60,7 +60,7 @@ export const HARNESSES: Harness[] = [
   {
     name: "OpenCode",
     bin: "opencode",
-    args: (prompt) => ["-p", prompt],
+    args: (prompt) => ["--prompt", prompt],
     installUrl: "https://opencode.ai",
     mode: "interactive",
     skillNative: false,
