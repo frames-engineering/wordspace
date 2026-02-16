@@ -13,19 +13,47 @@ npx wordspace init
 This will:
 
 1. Show available workflows and let you pick which ones to download
-2. Configure Claude Code permissions
+2. Configure agent permissions
 3. Create the `output/` directory
 
-Then start Claude Code and run a workflow:
+Then run a workflow:
 
 ```bash
-claude
-prose run workflows/x-daily-pulse.prose
+npx wordspace run workflows/x-daily-pulse.prose
+```
+
+Wordspace auto-detects which coding agents you have installed and lets you pick one.
+
+## Supported Agents
+
+| Agent | Binary | Mode | Install |
+|-------|--------|------|---------|
+| [Claude Code](https://claude.ai/code) | `claude` | interactive | `npm i -g @anthropic-ai/claude-code` |
+| [Codex](https://github.com/openai/codex) | `codex` | interactive | `npm i -g @openai/codex` |
+| [Gemini CLI](https://github.com/google/gemini-cli) | `gemini` | interactive | `npm i -g @google/gemini-cli` |
+| [Aider](https://aider.chat) | `aider` | headless | `pip install aider-chat` |
+| [Amp](https://sourcegraph.com/amp) | `amp` | interactive | `npm i -g @sourcegraph/amp` |
+| [OpenCode](https://opencode.ai) | `opencode` | interactive | [opencode.ai](https://opencode.ai) |
+| [Goose](https://block.github.io/goose) | `goose` | headless | `brew install block-goose-cli` |
+| [Cline](https://cline.bot) | `cline` | interactive | `npm i -g cline` |
+| [Kiro](https://kiro.dev) | `kiro` | interactive | `curl -fsSL https://cli.kiro.dev/install \| bash` |
+| [Cursor Agent](https://cursor.com) | `cursor-agent` | interactive | [cursor.com](https://cursor.com) |
+| [OpenClaw](https://openclaw.ai) | `openclaw` | passthrough | `npm i -g openclaw@latest` |
+
+**interactive** -- hands over the terminal for live interaction
+**headless** -- executes the prompt and exits
+**passthrough** -- outputs workflow instructions for the calling agent (OpenClaw is already running when it invokes wordspace)
+
+Use `--harness` to skip the picker:
+
+```bash
+npx wordspace run --harness aider workflows/x-daily-pulse.prose
+npx wordspace run --harness claude workflows/x-daily-pulse.prose
 ```
 
 ## Prerequisites
 
-- [Claude Code](https://claude.ai/code) CLI installed
+- At least one [supported agent](#supported-agents) installed
 - An [AgentWallet](https://frames.ag) account (for paid API workflows)
 - Wallet funded with USDC (even $1 covers hundreds of API calls)
 
@@ -58,6 +86,16 @@ npx wordspace add x-daily-pulse
 npx wordspace add x-daily-pulse --force   # overwrite existing
 ```
 
+### `wordspace run <target>`
+
+Run a `.prose` workflow via a coding agent.
+
+```bash
+npx wordspace run workflows/x-daily-pulse.prose                    # auto-detect agent
+npx wordspace run --harness claude workflows/x-daily-pulse.prose   # use specific agent
+npx wordspace run github:frames-engineering/wordspace/workflows/x-daily-pulse.prose  # remote
+```
+
 ## Workflows
 
 | File | Description |
@@ -67,7 +105,7 @@ npx wordspace add x-daily-pulse --force   # overwrite existing
 ### Running X Daily Pulse
 
 ```bash
-prose run workflows/x-daily-pulse.prose
+npx wordspace run workflows/x-daily-pulse.prose
 ```
 
 You'll be prompted for:
@@ -88,7 +126,7 @@ The workflow spawns four specialized agents (data-fetcher, analyst, engagement-c
                     └──────┬───────┘
                            │
                     ┌──────▼───────┐
-                    │ OpenProse VM │  (Claude becomes the interpreter)
+                    │ OpenProse VM │  (your agent becomes the interpreter)
                     └──────┬───────┘
                            │
               ┌────────────┼────────────┐
@@ -108,7 +146,7 @@ The workflow spawns four specialized agents (data-fetcher, analyst, engagement-c
 ```
 
 1. **OpenProse** defines the workflow as a `.prose` program
-2. **Claude Code** becomes the VM and spawns parallel agents
+2. **Your coding agent** becomes the VM and spawns parallel agents
 3. **Agents** call external APIs through the **Frames Registry**
 4. **AgentWallet** handles payments automatically via the x402 protocol
 5. Results flow back through the agent pipeline into a final output
