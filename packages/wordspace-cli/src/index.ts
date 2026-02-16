@@ -6,7 +6,7 @@ import { add } from "./commands/add.js";
 import { run } from "./commands/run.js";
 import * as log from "./lib/log.js";
 
-const VERSION = "0.0.11";
+const VERSION = "0.0.12";
 
 const HELP = `
 Usage: wordspace <command> [options]

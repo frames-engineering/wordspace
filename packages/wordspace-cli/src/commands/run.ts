@@ -81,7 +81,11 @@ export async function run(target: string | undefined, force: boolean, harnessArg
       log.step("Pick a coding agent");
       harness = await pickOne(
         installed,
-        (h) => h.mode === "headless" ? `${h.name} (headless)` : h.name,
+        (h) => {
+        if (h.mode === "headless") return `${h.name} (headless)`;
+        if (h.mode === "passthrough") return `${h.name} (passthrough)`;
+        return h.name;
+      },
         "Select harness",
       );
     }
@@ -91,6 +95,8 @@ export async function run(target: string | undefined, force: boolean, harnessArg
 
   if (harness.mode === "headless") {
     log.warn("Headless mode — the agent will execute and exit without interaction.");
+  } else if (harness.mode === "passthrough") {
+    log.info("Passthrough mode — outputting workflow for the calling agent.");
   }
 
   const cwd = process.cwd();
@@ -130,6 +136,12 @@ export async function run(target: string | undefined, force: boolean, harnessArg
   }
 
   const prompt = buildPrompt(harness, prosePath, cwd);
+
+  if (harness.mode === "passthrough") {
+    // The calling agent is already running — just output the prompt
+    console.log(prompt);
+    process.exit(0);
+  }
 
   console.log();
   if (harness.skillNative) {

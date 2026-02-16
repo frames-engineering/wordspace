@@ -9,8 +9,8 @@ export interface Harness {
   args: (prompt: string) => string[];
   /** URL or install command the user can use to install this harness. */
   installUrl: string;
-  /** Whether the harness runs interactively or headless. */
-  mode: "interactive" | "headless";
+  /** Whether the harness runs interactively, headless, or passthrough (already running). */
+  mode: "interactive" | "headless" | "passthrough";
   /** Whether the harness natively understands /open-prose skill commands. */
   skillNative: boolean;
 }
@@ -95,6 +95,14 @@ export const HARNESSES: Harness[] = [
     args: (prompt) => ["chat", prompt],
     installUrl: "https://cursor.com",
     mode: "interactive",
+    skillNative: false,
+  },
+  {
+    name: "OpenClaw",
+    bin: "openclaw",
+    args: () => [],
+    installUrl: "npm i -g openclaw@latest",
+    mode: "passthrough",
     skillNative: false,
   },
 ];
