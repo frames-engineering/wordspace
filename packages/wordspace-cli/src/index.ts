@@ -6,7 +6,7 @@ import { add } from "./commands/add.js";
 import { run } from "./commands/run.js";
 import * as log from "./lib/log.js";
 
-const VERSION = "0.0.12";
+const VERSION = "0.0.14";
 
 const HELP = `
 Usage: wordspace <command> [options]
@@ -20,6 +20,9 @@ Commands:
 Options:
   --force            Re-run all steps / overwrite existing files
   --harness <name>   Use a specific coding agent (e.g. claude, aider, goose)
+  --model <model>    Model to pass to the harness (e.g. openrouter/minimax/minimax-m2.5)
+  --params <json>    Workflow input parameters as JSON (e.g. '{"topic":"x402"}')
+  --skills-dir <dir> Custom skills directory (default: auto-discover)
   --help             Show this help message
   --version          Show version number
 `.trim();
@@ -37,14 +40,28 @@ async function main() {
     process.exit(0);
   }
 
-  const harnessIdx = args.indexOf("--harness");
-  const harnessArg = harnessIdx !== -1 ? args[harnessIdx + 1] : undefined;
+  let harnessArg: string | undefined;
+  let modelArg: string | undefined;
+  let params: Record<string, string> | undefined;
+  let skillsDir: string | undefined;
 
   // Filter out flags and their values from positional args
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--harness") {
-      i++; // skip the value
+      harnessArg = args[++i];
+    } else if (args[i] === "--model") {
+      modelArg = args[++i];
+    } else if (args[i] === "--params") {
+      const raw = args[++i];
+      try {
+        params = JSON.parse(raw);
+      } catch {
+        log.error("Invalid --params JSON");
+        process.exit(1);
+      }
+    } else if (args[i] === "--skills-dir") {
+      skillsDir = args[++i];
     } else if (!args[i].startsWith("-")) {
       positional.push(args[i]);
     }
@@ -59,7 +76,7 @@ async function main() {
   } else if (command === "add") {
     await add(positional.slice(1), force);
   } else if (command === "run") {
-    await run(positional[1], force, harnessArg);
+    await run(positional[1], force, harnessArg, { params, skillsDir, model: modelArg });
   } else if (!command) {
     console.log(HELP);
     process.exit(0);

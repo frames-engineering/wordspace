@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { setupClaude } from "./setup-claude.js";
 import { createDirs } from "./create-dirs.js";
 import type { Harness } from "../lib/harness.js";
+import { discoverSkills, hasRequiredSkills } from "../lib/skills.js";
 import * as log from "../lib/log.js";
 
 const SKILL_PACKAGES = [
@@ -25,19 +26,16 @@ function installSkills(cwd: string) {
 }
 
 /** Silently initialize the project if not already done. */
-export function ensureInit(cwd: string, harness: Harness) {
+export function ensureInit(cwd: string, harness: Harness, customSkillsDir?: string) {
   const isClaude = harness.bin === "claude";
 
   const hasSettings = isClaude
     ? existsSync(join(cwd, ".claude", "settings.local.json"))
     : true; // non-Claude harnesses don't need Claude settings
   const hasOutput = existsSync(join(cwd, "output"));
-  const skillsDir = join(cwd, ".agents", "skills");
-  const hasSkills =
-    existsSync(join(skillsDir, "open-prose")) &&
-    existsSync(join(skillsDir, "agentwallet")) &&
-    existsSync(join(skillsDir, "registry")) &&
-    existsSync(join(skillsDir, "wordspace"));
+
+  const discovery = discoverSkills(cwd, customSkillsDir);
+  const hasSkills = discovery !== null && hasRequiredSkills(discovery.dir);
 
   if (hasSettings && hasOutput && hasSkills) return;
 
