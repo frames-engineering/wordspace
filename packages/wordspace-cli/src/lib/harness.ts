@@ -62,8 +62,8 @@ export const HARNESSES: Harness[] = [
     bin: "opencode",
     args: (prompt, model) => [
       "run",
-      "--prompt", prompt,
       ...(model ? ["--model", model] : []),
+      prompt,
     ],
     installUrl: "https://opencode.ai",
     mode: "headless",
