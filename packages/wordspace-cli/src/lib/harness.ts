@@ -5,8 +5,8 @@ export interface Harness {
   name: string;
   /** Binary name on PATH. */
   bin: string;
-  /** Build the CLI args from the prompt string. */
-  args: (prompt: string) => string[];
+  /** Build the CLI args from the prompt string and optional model. */
+  args: (prompt: string, model?: string) => string[];
   /** URL or install command the user can use to install this harness. */
   installUrl: string;
   /** Whether the harness runs interactively, headless, or passthrough (already running). */
@@ -60,9 +60,13 @@ export const HARNESSES: Harness[] = [
   {
     name: "OpenCode",
     bin: "opencode",
-    args: (prompt) => ["--prompt", prompt],
+    args: (prompt, model) => [
+      "run",
+      "--prompt", prompt,
+      ...(model ? ["--model", model] : []),
+    ],
     installUrl: "https://opencode.ai",
-    mode: "interactive",
+    mode: "headless",
     skillNative: false,
   },
   {
@@ -124,8 +128,9 @@ export function spawnHarness(
   harness: Harness,
   prompt: string,
   cwd: string,
+  model?: string,
 ): number {
-  const result = spawnSync(harness.bin, harness.args(prompt), {
+  const result = spawnSync(harness.bin, harness.args(prompt, model), {
     cwd,
     stdio: "inherit",
   });

@@ -16,6 +16,7 @@ import * as log from "../lib/log.js";
 export interface RunOptions {
   params?: Record<string, string>;
   skillsDir?: string;
+  model?: string;
 }
 
 /**
@@ -223,6 +224,6 @@ export async function run(target: string | undefined, force: boolean, harnessArg
   }
   console.log();
 
-  const exitCode = spawnHarness(harness, prompt, cwd);
+  const exitCode = spawnHarness(harness, prompt, cwd, options?.model);
   process.exit(exitCode);
 }

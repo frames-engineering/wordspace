@@ -6,7 +6,7 @@ import { add } from "./commands/add.js";
 import { run } from "./commands/run.js";
 import * as log from "./lib/log.js";
 
-const VERSION = "0.0.13";
+const VERSION = "0.0.14";
 
 const HELP = `
 Usage: wordspace <command> [options]
@@ -20,6 +20,7 @@ Commands:
 Options:
   --force            Re-run all steps / overwrite existing files
   --harness <name>   Use a specific coding agent (e.g. claude, aider, goose)
+  --model <model>    Model to pass to the harness (e.g. openrouter/minimax/minimax-m2.5)
   --params <json>    Workflow input parameters as JSON (e.g. '{"topic":"x402"}')
   --skills-dir <dir> Custom skills directory (default: auto-discover)
   --help             Show this help message
@@ -40,6 +41,7 @@ async function main() {
   }
 
   let harnessArg: string | undefined;
+  let modelArg: string | undefined;
   let params: Record<string, string> | undefined;
   let skillsDir: string | undefined;
 
@@ -48,6 +50,8 @@ async function main() {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--harness") {
       harnessArg = args[++i];
+    } else if (args[i] === "--model") {
+      modelArg = args[++i];
     } else if (args[i] === "--params") {
       const raw = args[++i];
       try {
@@ -72,7 +76,7 @@ async function main() {
   } else if (command === "add") {
     await add(positional.slice(1), force);
   } else if (command === "run") {
-    await run(positional[1], force, harnessArg, { params, skillsDir });
+    await run(positional[1], force, harnessArg, { params, skillsDir, model: modelArg });
   } else if (!command) {
     console.log(HELP);
     process.exit(0);
