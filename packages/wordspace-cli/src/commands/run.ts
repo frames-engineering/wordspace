@@ -25,22 +25,43 @@ export interface RunOptions {
  * Skill-native harnesses (Claude Code) get the short `/open-prose run <path>` command.
  * All others receive the .prose file content inline with execution instructions.
  */
-function buildPrompt(harness: Harness, prosePath: string, cwd: string): string {
+function buildPrompt(harness: Harness, prosePath: string, cwd: string, params?: Record<string, string>): string {
   if (harness.skillNative) {
+    if (params && Object.keys(params).length > 0) {
+      return `/open-prose run ${prosePath} --params '${JSON.stringify(params)}'`;
+    }
     return `/open-prose run ${prosePath}`;
   }
 
   const fullPath = join(cwd, prosePath);
   const content = readFileSync(fullPath, "utf-8");
 
-  return [
+  const lines = [
     `You are executing a wordspace workflow defined in the file "${prosePath}".`,
     `Follow the steps below exactly. Write all output files to the "output/" directory.`,
+  ];
+
+  if (params && Object.keys(params).length > 0) {
+    lines.push(
+      "",
+      "The following input parameters have been provided:",
+    );
+    for (const [key, value] of Object.entries(params)) {
+      lines.push(`  ${key} = "${value}"`);
+    }
+    lines.push(
+      "Use these values for the corresponding `input` declarations in the workflow.",
+    );
+  }
+
+  lines.push(
     "",
     "--- BEGIN WORKFLOW ---",
     content,
     "--- END WORKFLOW ---",
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 }
 
 /**
@@ -214,7 +235,7 @@ export async function run(target: string | undefined, force: boolean, harnessArg
     process.exit(0);
   }
 
-  const prompt = buildPrompt(harness, prosePath, cwd);
+  const prompt = buildPrompt(harness, prosePath, cwd, options?.params);
 
   console.log();
   if (harness.skillNative) {
