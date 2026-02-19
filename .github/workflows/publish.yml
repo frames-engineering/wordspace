@@ -2,7 +2,8 @@
 # are merged to main. Version bumps should happen manually inside the PR.
 #
 # Prerequisites:
-#   Add NPM_TOKEN as a repository secret (Settings → Secrets → Actions)
+#   Add NPM_TOKEN as a repository secret in the NPM environment
+#   (Settings → Environments → NPM → Add secret)
 
 name: Publish to npm
 
@@ -11,10 +12,12 @@ on:
     branches: [main]
     paths:
       - "packages/wordspace-cli/**"
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: NPM
     permissions:
       contents: write # needed for git tag push
 
@@ -39,22 +42,25 @@ jobs:
         run: |
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           echo "local=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Local version: $LOCAL_VERSION"
 
-          PUBLISHED_VERSION=$(npm view wordspace version 2>/dev/null || echo "0.0.0")
+          # Use --registry directly to avoid .npmrc auth issues on public reads
+          PUBLISHED_VERSION=$(npm view wordspace version --registry https://registry.npmjs.org 2>/dev/null || echo "0.0.0")
           echo "published=$PUBLISHED_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Published version: $PUBLISHED_VERSION"
 
           if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Version $LOCAL_VERSION is already published — skipping."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Publishing $LOCAL_VERSION (latest published: $PUBLISHED_VERSION)"
+            echo "Will publish $LOCAL_VERSION (latest on npm: $PUBLISHED_VERSION)"
           fi
         working-directory: packages/wordspace-cli
 
       - name: Publish to npm
         if: steps.version-check.outputs.skip == 'false'
-        run: npm publish
+        run: npm publish --access public
         working-directory: packages/wordspace-cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
